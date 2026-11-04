@@ -1,0 +1,34 @@
+Article Automation Bridge
+=========================
+
+Este plugin adiciona um painel para configurar a geração Groq e criar
+rascunhos no WordPress para revisão humana. Ele também mantém uma API REST
+protegida para o cliente externo do projeto.
+
+Painel
+------
+
+No wp-admin, acesse Configurações > Automação de artigos. Configure a chave da
+API Groq, o modelo, o tema/nicho, público, idioma, tom, categoria, temas,
+regras editoriais, tamanho dos artigos, quantidade por execução e limite de
+rascunhos pendentes.
+
+O botão de geração manual cria rascunhos. O agendamento pode ser diário ou
+semanal; para executar pontualmente em um computador local sem visitas ao site,
+configure a tarefa do Agendador do Windows conforme o README.md.
+
+Revisão e publicação
+--------------------
+
+O plugin cria somente posts em status draft. Não publica nem agenda a
+publicação. Depois da revisão e aprovação humana, a publicação ou o
+agendamento é feito manualmente no editor do WordPress.
+
+API REST legada
+---------------
+
+O endpoint `POST /wp-json/article-automation/v1/articles` continua disponível
+para o cliente Node.js. Ele exige o token definido por
+`ARTICLE_AUTOMATION_BRIDGE_TOKEN` no `wp-config.php` e o cabeçalho Bearer.
+Título, conteúdo e `source_id` são obrigatórios. source_id repetido retorna
+HTTP 409 em vez de criar outro post.

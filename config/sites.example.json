@@ -1,0 +1,23 @@
+{
+  "sites": {
+    "local": {
+      "name": "Meu site WordPress",
+      "niche": "Configure o assunto deste site",
+      "language": "pt-BR",
+      "audience": "Descreva o público-alvo",
+      "tone": "Informativo, claro e natural",
+      "categories": ["Geral"],
+      "topicIdeas": [],
+      "minWords": 800,
+      "editorialRules": [
+        "Não invente fatos, números, citações ou fontes.",
+        "Use HTML semântico compatível com o editor do WordPress."
+      ],
+      "wordpress": {
+        "endpoint": "http://localhost/wordpress/?rest_route=/article-automation/v1/articles",
+        "tokenEnv": "WP_LOCAL_TOKEN",
+        "categoryIds": {}
+      }
+    }
+  }
+}
