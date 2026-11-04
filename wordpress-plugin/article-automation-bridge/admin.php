@@ -82,13 +82,13 @@ function article_automation_bridge_enqueue_admin_assets( $hook_suffix ) {
 		'article-automation-bridge-admin',
 		plugins_url( 'assets/admin.css', __FILE__ ),
 		array(),
-		'1.2.1'
+		'1.2.2'
 	);
 	wp_enqueue_script(
 		'article-automation-bridge-admin',
 		plugins_url( 'assets/admin.js', __FILE__ ),
 		array(),
-		'1.2.1',
+		'1.2.2',
 		true
 	);
 }
@@ -106,6 +106,7 @@ function article_automation_bridge_render_settings_page() {
 	$notice      = isset( $_GET['article_automation_notice'] ) ? sanitize_key( wp_unslash( $_GET['article_automation_notice'] ) ) : '';
 	$last_error  = get_transient( 'article_automation_bridge_last_error' );
 	$providers   = article_automation_bridge_provider_options();
+	$pending_percent = min( 100, (int) round( 100 * (int) $pending / max( 1, (int) $settings['max_pending'] ) ) );
 	?>
 	<div class="wrap aab-wrap">
 		<header class="aab-header">
@@ -130,6 +131,9 @@ function article_automation_bridge_render_settings_page() {
 				<span class="aab-stat-label"><?php esc_html_e( 'Fila de revisão', 'article-automation-bridge' ); ?></span>
 				<strong><?php echo esc_html( (int) $pending ); ?><span> / <?php echo esc_html( (int) $settings['max_pending'] ); ?></span></strong>
 				<p><?php esc_html_e( 'rascunhos aguardando revisão', 'article-automation-bridge' ); ?></p>
+				<div class="aab-queue-track" role="progressbar" aria-label="<?php esc_attr_e( 'Ocupação da fila de revisão', 'article-automation-bridge' ); ?>" aria-valuemin="0" aria-valuemax="100" aria-valuenow="<?php echo esc_attr( $pending_percent ); ?>">
+					<span style="width: <?php echo esc_attr( $pending_percent ); ?>%"></span>
+				</div>
 			</div>
 			<div class="aab-stat-card">
 				<span class="aab-stat-label"><?php esc_html_e( 'Provedor ativo', 'article-automation-bridge' ); ?></span>
@@ -153,10 +157,16 @@ function article_automation_bridge_render_settings_page() {
 			</div>
 		</div>
 
+		<nav class="aab-section-nav" aria-label="<?php esc_attr_e( 'Etapas de configuração', 'article-automation-bridge' ); ?>">
+			<a href="#aab-ai-settings"><span>01</span><?php esc_html_e( 'Provedor de IA', 'article-automation-bridge' ); ?></a>
+			<a href="#aab-editorial-settings"><span>02</span><?php esc_html_e( 'Linha editorial', 'article-automation-bridge' ); ?></a>
+			<a href="#aab-workflow-settings"><span>03</span><?php esc_html_e( 'Fila e agenda', 'article-automation-bridge' ); ?></a>
+		</nav>
+
 		<form class="aab-settings-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="article_automation_bridge_save_settings">
 			<?php wp_nonce_field( 'article_automation_bridge_save_settings' ); ?>
-			<section class="aab-card" aria-labelledby="aab-ai-heading">
+			<section class="aab-card" id="aab-ai-settings" aria-labelledby="aab-ai-heading">
 				<div class="aab-card-heading">
 					<span class="aab-step">01</span>
 					<div><h2 id="aab-ai-heading"><?php esc_html_e( 'Inteligência artificial', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Escolha o provedor e conecte o modelo que vai criar seus rascunhos.', 'article-automation-bridge' ); ?></p></div>
@@ -189,7 +199,7 @@ function article_automation_bridge_render_settings_page() {
 				</div>
 			</section>
 
-			<section class="aab-card" aria-labelledby="aab-editorial-heading">
+			<section class="aab-card" id="aab-editorial-settings" aria-labelledby="aab-editorial-heading">
 				<div class="aab-card-heading">
 					<span class="aab-step">02</span>
 					<div><h2 id="aab-editorial-heading"><?php esc_html_e( 'Identidade editorial', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Dê contexto à IA para manter os artigos alinhados ao seu site e ao seu público.', 'article-automation-bridge' ); ?></p></div>
@@ -241,7 +251,7 @@ function article_automation_bridge_render_settings_page() {
 				</div>
 			</section>
 
-			<section class="aab-card" aria-labelledby="aab-workflow-heading">
+			<section class="aab-card" id="aab-workflow-settings" aria-labelledby="aab-workflow-heading">
 				<div class="aab-card-heading">
 					<span class="aab-step">03</span>
 					<div><h2 id="aab-workflow-heading"><?php esc_html_e( 'Fila e agendamento', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Controle o ritmo de geração e o volume de conteúdo aguardando sua revisão.', 'article-automation-bridge' ); ?></p></div>
