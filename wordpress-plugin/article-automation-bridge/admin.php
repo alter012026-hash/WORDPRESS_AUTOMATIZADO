@@ -73,6 +73,27 @@ function article_automation_bridge_admin_menu() {
 }
 add_action( 'admin_menu', 'article_automation_bridge_admin_menu' );
 
+function article_automation_bridge_enqueue_admin_assets( $hook_suffix ) {
+	if ( 'settings_page_article-automation-bridge' !== $hook_suffix ) {
+		return;
+	}
+
+	wp_enqueue_style(
+		'article-automation-bridge-admin',
+		plugins_url( 'assets/admin.css', __FILE__ ),
+		array(),
+		'1.2.1'
+	);
+	wp_enqueue_script(
+		'article-automation-bridge-admin',
+		plugins_url( 'assets/admin.js', __FILE__ ),
+		array(),
+		'1.2.1',
+		true
+	);
+}
+add_action( 'admin_enqueue_scripts', 'article_automation_bridge_enqueue_admin_assets' );
+
 function article_automation_bridge_render_settings_page() {
 	if ( ! current_user_can( 'manage_options' ) ) {
 		wp_die( esc_html__( 'Você não tem permissão para acessar esta página.', 'article-automation-bridge' ) );
@@ -84,10 +105,18 @@ function article_automation_bridge_render_settings_page() {
 	$next_run    = wp_next_scheduled( ARTICLE_AUTOMATION_BRIDGE_CRON_HOOK );
 	$notice      = isset( $_GET['article_automation_notice'] ) ? sanitize_key( wp_unslash( $_GET['article_automation_notice'] ) ) : '';
 	$last_error  = get_transient( 'article_automation_bridge_last_error' );
+	$providers   = article_automation_bridge_provider_options();
 	?>
-	<div class="wrap">
-		<h1><?php esc_html_e( 'Automação de artigos', 'article-automation-bridge' ); ?></h1>
-		<p><?php esc_html_e( 'Configure a geração de rascunhos. A automação nunca publica artigos: revise e aprove cada post no WordPress.', 'article-automation-bridge' ); ?></p>
+	<div class="wrap aab-wrap">
+		<header class="aab-header">
+			<div>
+				<p class="aab-eyebrow"><?php esc_html_e( 'CENTRAL DE CONTEÚDO', 'article-automation-bridge' ); ?></p>
+				<h1><?php esc_html_e( 'Automação de artigos', 'article-automation-bridge' ); ?></h1>
+				<p class="aab-intro"><?php esc_html_e( 'Configure a inteligência artificial, organize sua linha editorial e prepare rascunhos para revisão.', 'article-automation-bridge' ); ?></p>
+			</div>
+			<span class="aab-review-badge"><span aria-hidden="true"></span><?php esc_html_e( 'Publicação sempre manual', 'article-automation-bridge' ); ?></span>
+		</header>
+
 		<?php if ( 'saved' === $notice ) : ?>
 			<div class="notice notice-success is-dismissible"><p><?php esc_html_e( 'Configurações salvas.', 'article-automation-bridge' ); ?></p></div>
 		<?php elseif ( 'generated' === $notice ) : ?>
@@ -96,172 +125,199 @@ function article_automation_bridge_render_settings_page() {
 			<div class="notice notice-error"><p><?php echo esc_html( $last_error ? $last_error : __( 'A geração não foi concluída. Nenhum post será publicado automaticamente.', 'article-automation-bridge' ) ); ?></p></div>
 		<?php endif; ?>
 
-		<div class="notice notice-info inline">
-			<p>
-				<?php
-				printf(
-					/* translators: 1: pending draft count, 2: configured maximum. */
-					esc_html__( 'Rascunhos aguardando revisão: %1$d de %2$d.', 'article-automation-bridge' ),
-					(int) $pending,
-					(int) $settings['max_pending']
-				);
-				if ( $next_run ) {
-					echo ' ';
-					printf(
-						/* translators: %s: next scheduled run in local date/time. */
-						esc_html__( 'Próxima geração: %s.', 'article-automation-bridge' ),
-						esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_run ) )
-					);
-				} elseif ( $settings['schedule_on'] ) {
-					echo ' ' . esc_html__( 'O horário está configurado, mas o próximo evento ainda não foi registrado.', 'article-automation-bridge' );
-				} else {
-					echo ' ' . esc_html__( 'Agendamento desativado.', 'article-automation-bridge' );
-				}
-				?>
-			</p>
+		<div class="aab-overview" aria-label="<?php esc_attr_e( 'Resumo da automação', 'article-automation-bridge' ); ?>">
+			<div class="aab-stat-card">
+				<span class="aab-stat-label"><?php esc_html_e( 'Fila de revisão', 'article-automation-bridge' ); ?></span>
+				<strong><?php echo esc_html( (int) $pending ); ?><span> / <?php echo esc_html( (int) $settings['max_pending'] ); ?></span></strong>
+				<p><?php esc_html_e( 'rascunhos aguardando revisão', 'article-automation-bridge' ); ?></p>
+			</div>
+			<div class="aab-stat-card">
+				<span class="aab-stat-label"><?php esc_html_e( 'Provedor ativo', 'article-automation-bridge' ); ?></span>
+				<strong class="aab-stat-text"><?php echo esc_html( isset( $providers[ $settings['provider'] ] ) ? $providers[ $settings['provider'] ] : $providers['groq'] ); ?></strong>
+				<p><?php echo esc_html( $settings['model'] ); ?></p>
+			</div>
+			<div class="aab-stat-card">
+				<span class="aab-stat-label"><?php esc_html_e( 'Agendamento', 'article-automation-bridge' ); ?></span>
+				<strong class="aab-stat-text"><?php echo ! empty( $settings['schedule_on'] ) ? esc_html__( 'Ativo', 'article-automation-bridge' ) : esc_html__( 'Desativado', 'article-automation-bridge' ); ?></strong>
+				<p>
+					<?php
+					if ( $next_run ) {
+						echo esc_html( wp_date( get_option( 'date_format' ) . ' ' . get_option( 'time_format' ), $next_run ) );
+					} elseif ( $settings['schedule_on'] ) {
+						esc_html_e( 'Próxima execução ainda não registrada', 'article-automation-bridge' );
+					} else {
+						esc_html_e( 'Sem execuções programadas', 'article-automation-bridge' );
+					}
+					?>
+				</p>
+			</div>
 		</div>
 
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+		<form class="aab-settings-form" method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="article_automation_bridge_save_settings">
 			<?php wp_nonce_field( 'article_automation_bridge_save_settings' ); ?>
-			<table class="form-table" role="presentation">
-				<tr>
-					<th scope="row"><label for="provider"><?php esc_html_e( 'Provedor de IA', 'article-automation-bridge' ); ?></label></th>
-					<td>
+			<section class="aab-card" aria-labelledby="aab-ai-heading">
+				<div class="aab-card-heading">
+					<span class="aab-step">01</span>
+					<div><h2 id="aab-ai-heading"><?php esc_html_e( 'Inteligência artificial', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Escolha o provedor e conecte o modelo que vai criar seus rascunhos.', 'article-automation-bridge' ); ?></p></div>
+				</div>
+				<div class="aab-field-grid">
+					<div class="aab-field aab-field-wide">
+						<label for="provider"><?php esc_html_e( 'Provedor de IA', 'article-automation-bridge' ); ?></label>
 						<select id="provider" name="settings[provider]">
-							<?php foreach ( article_automation_bridge_provider_options() as $provider_id => $provider_label ) : ?>
+							<?php foreach ( $providers as $provider_id => $provider_label ) : ?>
 								<option value="<?php echo esc_attr( $provider_id ); ?>" <?php selected( $settings['provider'], $provider_id ); ?>><?php echo esc_html( $provider_label ); ?></option>
 							<?php endforeach; ?>
 						</select>
-						<p class="description"><?php esc_html_e( 'Escolha o serviço que será usado nas gerações manuais e agendadas.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="api_key"><?php esc_html_e( 'Chave de API', 'article-automation-bridge' ); ?></label></th>
-					<td>
-						<input type="password" class="regular-text" id="api_key" name="settings[api_key]" value="" autocomplete="new-password">
-						<p class="description"><?php echo $settings['api_key'] ? esc_html__( 'Uma chave deste provedor já está salva. Deixe em branco para mantê-la; informe outra para substituí-la. Cada provedor mantém sua própria chave. Ollama local não exige chave.', 'article-automation-bridge' ) : esc_html__( 'Informe a chave do provedor selecionado. Ela fica salva nas opções deste WordPress e não é exibida no painel. Cada provedor mantém sua própria chave. Ollama local não exige chave.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="model"><?php esc_html_e( 'Modelo', 'article-automation-bridge' ); ?></label></th>
-					<td>
-						<input type="text" class="regular-text" id="model" name="settings[model]" value="<?php echo esc_attr( $settings['model'] ); ?>" required>
-						<p class="description"><?php esc_html_e( 'Use o identificador de um modelo disponível na conta do provedor escolhido.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="base_url"><?php esc_html_e( 'URL base da API', 'article-automation-bridge' ); ?></label></th>
-					<td>
-						<input type="url" class="regular-text" id="base_url" name="settings[base_url]" value="<?php echo esc_attr( $settings['base_url'] ); ?>" placeholder="http://localhost:11434/v1">
-						<p class="description"><?php esc_html_e( 'Usada por Ollama local (padrão http://localhost:11434/v1) e pelo provedor compatível com Responses API (informe a URL base, por exemplo https://api.exemplo.com/v1). Ollama só aceita HTTP em localhost.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="site_name"><?php esc_html_e( 'Nome do site', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="site_name" name="settings[site_name]" value="<?php echo esc_attr( $settings['site_name'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="theme"><?php esc_html_e( 'Tema / nicho editorial', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="theme" name="settings[theme]" value="<?php echo esc_attr( $settings['theme'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="audience"><?php esc_html_e( 'Público-alvo', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="audience" name="settings[audience]" value="<?php echo esc_attr( $settings['audience'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="language"><?php esc_html_e( 'Idioma', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="language" name="settings[language]" value="<?php echo esc_attr( $settings['language'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="tone"><?php esc_html_e( 'Tom de escrita', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="tone" name="settings[tone]" value="<?php echo esc_attr( $settings['tone'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="min_words"><?php esc_html_e( 'Mínimo de palavras', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="number" id="min_words" name="settings[min_words]" min="100" max="10000" value="<?php echo esc_attr( $settings['min_words'] ); ?>" required></td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="category_id"><?php esc_html_e( 'Categoria dos rascunhos', 'article-automation-bridge' ); ?></label></th>
-					<td>
+						<p class="description"><?php esc_html_e( 'Este provedor será usado nas gerações manuais e agendadas.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field aab-api-key-field">
+						<label for="api_key"><?php esc_html_e( 'Chave de API', 'article-automation-bridge' ); ?></label>
+						<input type="password" id="api_key" name="settings[api_key]" value="" autocomplete="new-password" placeholder="<?php esc_attr_e( 'Cole sua chave de API', 'article-automation-bridge' ); ?>">
+						<p class="description"><?php echo $settings['api_key'] ? esc_html__( 'Chave salva. Deixe em branco para mantê-la. Cada provedor guarda sua própria chave.', 'article-automation-bridge' ) : esc_html__( 'A chave será guardada neste WordPress e não será exibida novamente.', 'article-automation-bridge' ); ?> <?php esc_html_e( 'Ollama local não exige chave.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field">
+						<label for="model"><?php esc_html_e( 'Modelo', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="model" name="settings[model]" value="<?php echo esc_attr( $settings['model'] ); ?>" required>
+						<p class="description"><?php esc_html_e( 'Informe o identificador de um modelo disponível na sua conta.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field aab-provider-url-field">
+						<label for="base_url"><?php esc_html_e( 'URL base da API', 'article-automation-bridge' ); ?></label>
+						<input type="url" id="base_url" name="settings[base_url]" value="<?php echo esc_attr( $settings['base_url'] ); ?>" placeholder="http://localhost:11434/v1">
+						<p class="description"><?php esc_html_e( 'Ollama usa http://localhost:11434/v1 por padrão. Para outro serviço, informe uma URL HTTPS compatível com Responses API.', 'article-automation-bridge' ); ?></p>
+					</div>
+				</div>
+			</section>
+
+			<section class="aab-card" aria-labelledby="aab-editorial-heading">
+				<div class="aab-card-heading">
+					<span class="aab-step">02</span>
+					<div><h2 id="aab-editorial-heading"><?php esc_html_e( 'Identidade editorial', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Dê contexto à IA para manter os artigos alinhados ao seu site e ao seu público.', 'article-automation-bridge' ); ?></p></div>
+				</div>
+				<div class="aab-field-grid">
+					<div class="aab-field">
+						<label for="site_name"><?php esc_html_e( 'Nome do site', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="site_name" name="settings[site_name]" value="<?php echo esc_attr( $settings['site_name'] ); ?>" required>
+					</div>
+					<div class="aab-field">
+						<label for="theme"><?php esc_html_e( 'Tema ou nicho editorial', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="theme" name="settings[theme]" value="<?php echo esc_attr( $settings['theme'] ); ?>" required>
+					</div>
+					<div class="aab-field">
+						<label for="audience"><?php esc_html_e( 'Público-alvo', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="audience" name="settings[audience]" value="<?php echo esc_attr( $settings['audience'] ); ?>" required>
+					</div>
+					<div class="aab-field">
+						<label for="language"><?php esc_html_e( 'Idioma', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="language" name="settings[language]" value="<?php echo esc_attr( $settings['language'] ); ?>" required>
+					</div>
+					<div class="aab-field">
+						<label for="tone"><?php esc_html_e( 'Tom de escrita', 'article-automation-bridge' ); ?></label>
+						<input type="text" id="tone" name="settings[tone]" value="<?php echo esc_attr( $settings['tone'] ); ?>" required>
+					</div>
+					<div class="aab-field">
+						<label for="category_id"><?php esc_html_e( 'Categoria dos rascunhos', 'article-automation-bridge' ); ?></label>
 						<select id="category_id" name="settings[category_id]">
 							<?php foreach ( $categories as $category ) : ?>
 								<option value="<?php echo esc_attr( $category->term_id ); ?>" <?php selected( (int) $settings['category_id'], (int) $category->term_id ); ?>><?php echo esc_html( $category->name ); ?></option>
 							<?php endforeach; ?>
 						</select>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="topics"><?php esc_html_e( 'Temas para os artigos', 'article-automation-bridge' ); ?></label></th>
-					<td>
-						<textarea class="large-text" rows="5" id="topics" name="settings[topics]"><?php echo esc_textarea( $settings['topics'] ); ?></textarea>
-						<p class="description"><?php esc_html_e( 'Um tema por linha. Quando vazio, a IA escolhe temas dentro do nicho configurado.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><label for="rules"><?php esc_html_e( 'Regras editoriais', 'article-automation-bridge' ); ?></label></th>
-					<td><textarea class="large-text" rows="5" id="rules" name="settings[rules]"><?php echo esc_textarea( $settings['rules'] ); ?></textarea><p class="description"><?php esc_html_e( 'Uma regra por linha.', 'article-automation-bridge' ); ?></p></td>
-				</tr>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Fila de revisão', 'article-automation-bridge' ); ?></th>
-					<td>
-						<label for="batch_size"><?php esc_html_e( 'Posts gerados em cada execução', 'article-automation-bridge' ); ?></label>
+					</div>
+					<div class="aab-field">
+						<label for="min_words"><?php esc_html_e( 'Mínimo de palavras', 'article-automation-bridge' ); ?></label>
+						<input type="number" id="min_words" name="settings[min_words]" min="100" max="10000" value="<?php echo esc_attr( $settings['min_words'] ); ?>" required>
+						<p class="description"><?php esc_html_e( 'Entre 100 e 10.000 palavras.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field aab-field-wide">
+						<label for="topics"><?php esc_html_e( 'Temas sugeridos', 'article-automation-bridge' ); ?></label>
+						<textarea id="topics" name="settings[topics]" rows="4"><?php echo esc_textarea( $settings['topics'] ); ?></textarea>
+						<p class="description"><?php esc_html_e( 'Um tema por linha. Se deixar vazio, a IA sugere assuntos dentro do nicho configurado.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field aab-field-wide">
+						<label for="rules"><?php esc_html_e( 'Regras editoriais', 'article-automation-bridge' ); ?></label>
+						<textarea id="rules" name="settings[rules]" rows="4"><?php echo esc_textarea( $settings['rules'] ); ?></textarea>
+						<p class="description"><?php esc_html_e( 'Adicione uma orientação por linha, como fontes permitidas ou termos a evitar.', 'article-automation-bridge' ); ?></p>
+					</div>
+				</div>
+			</section>
+
+			<section class="aab-card" aria-labelledby="aab-workflow-heading">
+				<div class="aab-card-heading">
+					<span class="aab-step">03</span>
+					<div><h2 id="aab-workflow-heading"><?php esc_html_e( 'Fila e agendamento', 'article-automation-bridge' ); ?></h2><p><?php esc_html_e( 'Controle o ritmo de geração e o volume de conteúdo aguardando sua revisão.', 'article-automation-bridge' ); ?></p></div>
+				</div>
+				<div class="aab-field-grid">
+					<div class="aab-field">
+						<label for="batch_size"><?php esc_html_e( 'Artigos por execução', 'article-automation-bridge' ); ?></label>
 						<input type="number" id="batch_size" name="settings[batch_size]" min="1" max="5" value="<?php echo esc_attr( $settings['batch_size'] ); ?>">
-						<br>
-						<label for="max_pending"><?php esc_html_e( 'Máximo de rascunhos pendentes', 'article-automation-bridge' ); ?></label>
+						<p class="description"><?php esc_html_e( 'De 1 a 5 rascunhos por lote.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field">
+						<label for="max_pending"><?php esc_html_e( 'Limite de rascunhos pendentes', 'article-automation-bridge' ); ?></label>
 						<input type="number" id="max_pending" name="settings[max_pending]" min="1" max="500" value="<?php echo esc_attr( $settings['max_pending'] ); ?>">
-					</td>
-				</tr>
-				<tr>
-					<th scope="row"><?php esc_html_e( 'Agendamento de geração', 'article-automation-bridge' ); ?></th>
-					<td>
-						<label><input type="checkbox" name="settings[schedule_on]" value="1" <?php checked( $settings['schedule_on'] ); ?>> <?php esc_html_e( 'Ativar geração agendada de rascunhos', 'article-automation-bridge' ); ?></label>
-						<p>
-							<label for="frequency"><?php esc_html_e( 'Frequência', 'article-automation-bridge' ); ?></label>
-							<select id="frequency" name="settings[frequency]">
-								<option value="daily" <?php selected( $settings['frequency'], 'daily' ); ?>><?php esc_html_e( 'Diária', 'article-automation-bridge' ); ?></option>
-								<option value="weekly" <?php selected( $settings['frequency'], 'weekly' ); ?>><?php esc_html_e( 'Semanal', 'article-automation-bridge' ); ?></option>
-							</select>
-							<label for="day_of_week"><?php esc_html_e( 'Dia', 'article-automation-bridge' ); ?></label>
-							<select id="day_of_week" name="settings[day_of_week]">
-								<?php
-								$days = array(
-									'1' => __( 'Segunda-feira', 'article-automation-bridge' ),
-									'2' => __( 'Terça-feira', 'article-automation-bridge' ),
-									'3' => __( 'Quarta-feira', 'article-automation-bridge' ),
-									'4' => __( 'Quinta-feira', 'article-automation-bridge' ),
-									'5' => __( 'Sexta-feira', 'article-automation-bridge' ),
-									'6' => __( 'Sábado', 'article-automation-bridge' ),
-									'0' => __( 'Domingo', 'article-automation-bridge' ),
-								);
-								foreach ( $days as $day => $label ) :
-									?>
-									<option value="<?php echo esc_attr( $day ); ?>" <?php selected( $settings['day_of_week'], $day ); ?>><?php echo esc_html( $label ); ?></option>
-								<?php endforeach; ?>
-							</select>
-							<label for="time"><?php esc_html_e( 'Horário local do WordPress', 'article-automation-bridge' ); ?></label>
-							<input type="time" id="time" name="settings[time]" value="<?php echo esc_attr( $settings['time'] ); ?>">
-						</p>
-						<p class="description"><?php esc_html_e( 'A geração agendada cria somente rascunhos. O Agendador do Windows precisa acionar o WP-Cron para executar no horário, mesmo quando não houver visitas ao site.', 'article-automation-bridge' ); ?></p>
-					</td>
-				</tr>
-			</table>
-			<?php submit_button( __( 'Salvar configurações', 'article-automation-bridge' ) ); ?>
+						<p class="description"><?php esc_html_e( 'A geração pausa quando a fila atingir esse limite.', 'article-automation-bridge' ); ?></p>
+					</div>
+					<div class="aab-field aab-field-wide">
+						<label class="aab-checkbox">
+							<input type="checkbox" name="settings[schedule_on]" value="1" <?php checked( $settings['schedule_on'] ); ?>>
+							<span><strong><?php esc_html_e( 'Ativar geração agendada', 'article-automation-bridge' ); ?></strong><small><?php esc_html_e( 'Os artigos agendados também serão salvos apenas como rascunhos.', 'article-automation-bridge' ); ?></small></span>
+						</label>
+					</div>
+					<div class="aab-field">
+						<label for="frequency"><?php esc_html_e( 'Frequência', 'article-automation-bridge' ); ?></label>
+						<select id="frequency" name="settings[frequency]">
+							<option value="daily" <?php selected( $settings['frequency'], 'daily' ); ?>><?php esc_html_e( 'Diária', 'article-automation-bridge' ); ?></option>
+							<option value="weekly" <?php selected( $settings['frequency'], 'weekly' ); ?>><?php esc_html_e( 'Semanal', 'article-automation-bridge' ); ?></option>
+						</select>
+					</div>
+					<div class="aab-field aab-weekday-field">
+						<label for="day_of_week"><?php esc_html_e( 'Dia da semana', 'article-automation-bridge' ); ?></label>
+						<select id="day_of_week" name="settings[day_of_week]">
+							<?php
+							$days = array(
+								'1' => __( 'Segunda-feira', 'article-automation-bridge' ),
+								'2' => __( 'Terça-feira', 'article-automation-bridge' ),
+								'3' => __( 'Quarta-feira', 'article-automation-bridge' ),
+								'4' => __( 'Quinta-feira', 'article-automation-bridge' ),
+								'5' => __( 'Sexta-feira', 'article-automation-bridge' ),
+								'6' => __( 'Sábado', 'article-automation-bridge' ),
+								'0' => __( 'Domingo', 'article-automation-bridge' ),
+							);
+							foreach ( $days as $day => $label ) :
+								?>
+								<option value="<?php echo esc_attr( $day ); ?>" <?php selected( $settings['day_of_week'], $day ); ?>><?php echo esc_html( $label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+					</div>
+					<div class="aab-field">
+						<label for="time"><?php esc_html_e( 'Horário local do WordPress', 'article-automation-bridge' ); ?></label>
+						<input type="time" id="time" name="settings[time]" value="<?php echo esc_attr( $settings['time'] ); ?>">
+					</div>
+					<p class="aab-schedule-note aab-field-wide"><?php esc_html_e( 'O WP-Cron precisa ser acionado pelo site ou pelo Agendador do Windows. Consulte as instruções do plugin se a execução local atrasar.', 'article-automation-bridge' ); ?></p>
+				</div>
+			</section>
+
+			<div class="aab-form-actions">
+				<p><?php esc_html_e( 'Salve as alterações antes de iniciar uma nova geração.', 'article-automation-bridge' ); ?></p>
+				<?php submit_button( __( 'Salvar configurações', 'article-automation-bridge' ), 'primary', 'submit', false ); ?>
+			</div>
 		</form>
 
-		<hr>
-		<h2><?php esc_html_e( 'Gerar agora', 'article-automation-bridge' ); ?></h2>
-		<p><?php esc_html_e( 'Gera a quantidade configurada de artigos e os salva como rascunhos. O uso da API do provedor selecionado pode consumir créditos.', 'article-automation-bridge' ); ?></p>
-		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
-			<input type="hidden" name="action" value="article_automation_bridge_generate_now">
-			<?php wp_nonce_field( 'article_automation_bridge_generate_now' ); ?>
-			<?php submit_button( __( 'Gerar rascunhos agora', 'article-automation-bridge' ), 'secondary', 'submit', false ); ?>
-		</form>
+		<section class="aab-card aab-generate-card" aria-labelledby="aab-generate-heading">
+			<div class="aab-generate-copy">
+				<span class="aab-step aab-step-accent"><?php esc_html_e( 'AÇÃO MANUAL', 'article-automation-bridge' ); ?></span>
+				<h2 id="aab-generate-heading"><?php esc_html_e( 'Pronto para criar rascunhos?', 'article-automation-bridge' ); ?></h2>
+				<p><?php esc_html_e( 'A geração usa o provedor selecionado, pode consumir créditos e respeita a quantidade e o limite da fila configurados acima.', 'article-automation-bridge' ); ?></p>
+			</div>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<input type="hidden" name="action" value="article_automation_bridge_generate_now">
+				<?php wp_nonce_field( 'article_automation_bridge_generate_now' ); ?>
+				<?php submit_button( __( 'Gerar rascunhos agora', 'article-automation-bridge' ), 'primary', 'submit', false ); ?>
+			</form>
+		</section>
 
 		<?php if ( $settings['schedule_on'] ) : ?>
-			<hr>
-			<h2><?php esc_html_e( 'Agendador do Windows', 'article-automation-bridge' ); ?></h2>
-			<p><?php esc_html_e( 'Use o script incluído no plugin para acionar o WP-Cron a cada minuto. Consulte o README do plugin para o comando de configuração.', 'article-automation-bridge' ); ?></p>
+			<p class="aab-cron-note"><?php esc_html_e( 'A agenda do WordPress está ativa. Para horários confiáveis em instalações locais, configure o Agendador do Windows conforme o README do plugin.', 'article-automation-bridge' ); ?></p>
 		<?php endif; ?>
 	</div>
 	<?php
