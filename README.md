@@ -13,13 +13,16 @@ agendamento, segurança e solução de problemas, consulte
 - Node.js 20 ou superior
 - WordPress acessível pela máquina local
 - Plugin Article Automation Bridge ativo no WordPress
-- API Groq com suporte ao endpoint Responses
+- API de IA com suporte ao endpoint Responses para a CLI (Groq por padrão)
 
 ## Configuração local
 
 1. Instale e ative o plugin WordPress incluído em `wordpress-plugin/`. Para
    configurar a automação pelo wp-admin, consulte o
    [README do plugin](./wordpress-plugin/article-automation-bridge/README.md).
+   No painel do plugin, é possível selecionar Groq, OpenAI, Anthropic Claude,
+   Google Gemini, OpenRouter, Ollama local ou outro serviço compatível com
+   OpenAI Responses API.
 2. No `wp-config.php` do WordPress, configure um token compartilhado:
 
    ```php

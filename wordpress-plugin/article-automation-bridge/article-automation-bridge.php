@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Article Automation Bridge
  * Description: Gera artigos com IA e os salva como rascunhos para revisão humana.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 6.0
  * Requires PHP: 7.4
  * Author: Passe Já Concursos

@@ -1,17 +1,19 @@
 Article Automation Bridge
 =========================
 
-Este plugin adiciona um painel para configurar a geração Groq e criar
+Este plugin adiciona um painel para configurar um provedor de IA e criar
 rascunhos no WordPress para revisão humana. Ele também mantém uma API REST
 protegida para o cliente externo do projeto.
 
 Painel
 ------
 
-No wp-admin, acesse Configurações > Automação de artigos. Configure a chave da
-API Groq, o modelo, o tema/nicho, público, idioma, tom, categoria, temas,
-regras editoriais, tamanho dos artigos, quantidade por execução e limite de
-rascunhos pendentes.
+No wp-admin, acesse Configurações > Automação de artigos. Escolha Groq, OpenAI,
+Anthropic Claude, Google Gemini, OpenRouter, Ollama local ou um serviço
+compatível com OpenAI Responses API. Configure a chave, o modelo e, quando
+necessário, a URL base. Cada provedor mantém sua própria chave. Depois configure
+tema/nicho, público, idioma, tom, categoria, temas, regras editoriais, tamanho
+dos artigos, quantidade por execução e limite de rascunhos pendentes.
 
 O botão de geração manual cria rascunhos. O agendamento pode ser diário ou
 semanal; para executar pontualmente em um computador local sem visitas ao site,

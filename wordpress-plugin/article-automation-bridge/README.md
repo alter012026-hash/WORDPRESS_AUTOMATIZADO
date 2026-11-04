@@ -10,9 +10,17 @@ Copie esta pasta para `wp-content/plugins/article-automation-bridge` da
 instalação WordPress usada pelo XAMPP e ative o plugin em **Plugins**. A tela
 fica em **Configurações > Automação de artigos**.
 
-O painel configura a chave Groq, o modelo, tema/nicho, público, idioma, tom,
-categoria, temas sugeridos, regras, tamanho mínimo, quantidade por execução,
-limite da fila de revisão e frequência diária ou semanal.
+O painel permite escolher Groq, OpenAI, Anthropic Claude, Google Gemini,
+OpenRouter, Ollama local ou outro serviço compatível com a OpenAI Responses
+API. Configure a chave e o ID de um modelo disponível no provedor escolhido.
+As chaves são guardadas separadamente por provedor. Para Ollama, a URL base
+padrão é `http://localhost:11434/v1`; para outro serviço compatível com
+Responses, informe a URL base HTTPS terminada, por exemplo, em `/v1`.
+
+O painel também configura tema/nicho, público, idioma, tom, categoria, temas
+sugeridos, regras, tamanho mínimo, quantidade por execução, limite da fila de
+revisão e frequência diária ou semanal. Somente Ollama pode usar HTTP, e apenas
+em `localhost`.
 
 ## Agendamento local confiável
 
@@ -39,11 +47,13 @@ Unregister-ScheduledTask -TaskName "WordPress Article Automation WP-Cron" -Confi
 
 ## Segurança e operação
 
-- A chave Groq é guardada nas opções do WordPress e não é exibida no painel.
+- As chaves dos provedores são guardadas nas opções do WordPress e não são
+  exibidas no painel.
 - Restrinja o painel a administradores; apenas usuários com `manage_options`
   podem salvar a configuração ou gerar artigos.
 - Cada lote respeita o limite de rascunhos automatizados ainda pendentes de
   revisão. A geração pausa quando não há espaço na fila.
-- O botão **Gerar rascunhos agora** consome créditos da API Groq.
+- O botão **Gerar rascunhos agora** pode consumir créditos do provedor
+  selecionado.
 - Desativar o plugin remove o agendamento WordPress. A tarefa do Windows pode
   permanecer instalada; remova-a pelo comando acima se não for mais necessária.

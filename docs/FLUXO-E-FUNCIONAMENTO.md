@@ -9,26 +9,27 @@ mas nunca publica nem agenda a publicação de artigos**.
 
 O projeto tem duas formas independentes de iniciar uma geração:
 
-1. **Painel do WordPress:** o plugin chama a API Groq e salva os artigos
-   diretamente no próprio WordPress.
+1. **Painel do WordPress:** o plugin chama o provedor selecionado (Groq,
+   OpenAI, Anthropic, Google, OpenRouter, Ollama ou compatível) e salva os
+   artigos diretamente no próprio WordPress.
 2. **CLI Node.js:** o programa local chama a API Groq e envia cada artigo ao
    endpoint REST protegido do plugin WordPress.
 
-Ambos os fluxos usam a Groq para gerar o texto e terminam em um post WordPress
-com status `draft`. O painel e a CLI têm configurações separadas; alterar tema
-ou limite em um não atualiza automaticamente a configuração do outro.
+Os dois fluxos terminam em um post WordPress com status `draft`. A CLI continua
+usando a Responses API configurada por variáveis de ambiente; o painel permite
+selecionar provedores com APIs próprias. As configurações são separadas.
 
 ```mermaid
 flowchart TD
     U[Editor / administrador] -->|Gerar agora| P[Painel do plugin]
     W[Agendador do Windows] -->|Consulta wp-cron.php| C[WP-Cron]
     C -->|Evento no horário configurado| P
-    P -->|Prompt + chave| G[API Groq Responses]
-    G -->|JSON: título, resumo, HTML| P
+    P -->|Prompt + credencial| A[Provedor selecionado no painel]
+    A -->|JSON: título, resumo, HTML| P
     P -->|Valida, aplica limite e sanitiza| D[Rascunho WordPress]
 
     T[Operador] -->|npm run generate| N[CLI Node.js]
-    N -->|Prompt + chave| G
+    N -->|Prompt + chave| G[API configurada para a CLI]
     G -->|JSON: título, resumo, HTML| N
     N -->|Bearer token + source_id| R[REST Article Automation Bridge]
     R -->|Valida, evita duplicatas e sanitiza| D
@@ -43,12 +44,12 @@ flowchart TD
 | --- | --- |
 | `src/cli.js` | Lê opções do terminal, carrega configurações, executa geração, verifica tamanho e coordena o envio de rascunhos. |
 | `src/config.js` | Valida perfis de site, endpoint, modelo e variáveis de ambiente. |
-| `src/article-generator.js` | Cria o prompt, chama a Responses API da Groq, extrai o texto e valida o JSON e o HTML permitido. |
+| `src/article-generator.js` | Cria o prompt, chama a Responses API configurada para a CLI, extrai o texto e valida o JSON e o HTML permitido. |
 | `src/wordpress-client.js` | Monta o payload REST, cria o `source_id`, autentica com Bearer e confirma que o WordPress criou um rascunho. |
 | `config/sites.example.json` | Exemplo público de perfil de site; não contém tokens. |
 | `config/sites.json` | Configuração privada dos perfis locais; ignorada pelo Git. |
 | `.env.example` | Modelo das variáveis de ambiente sem valores secretos. |
-| `.env.local` | Chave Groq e tokens locais; ignorado pelo Git. |
+| `.env.local` | Chave de IA da CLI e tokens locais; ignorado pelo Git. |
 | `wordpress-plugin/article-automation-bridge/article-automation-bridge.php` | Registra o endpoint REST, verifica o token e salva artigos recebidos como rascunhos. |
 | `wordpress-plugin/article-automation-bridge/admin.php` | Implementa a tela de configuração, geração direta, controle de fila e WP-Cron. |
 | `wordpress-plugin/article-automation-bridge/scripts/` | Scripts PowerShell para acionar o WP-Cron pelo Agendador de Tarefas do Windows. |
@@ -57,15 +58,15 @@ flowchart TD
 ## 3. Fluxo A: gerar pelo painel do WordPress
 
 1. O administrador abre **Configurações > Automação de artigos**.
-2. Preenche as definições editoriais, salva a chave da Groq e escolhe a quantidade
-   por execução.
+2. Escolhe o provedor, configura a chave e o modelo, preenche as definições
+   editoriais e escolhe a quantidade por execução.
 3. Ao selecionar **Gerar rascunhos agora**, o plugin confere a permissão
    `manage_options`, valida o nonce do formulário e adquire um bloqueio para
    impedir duas gerações simultâneas.
 4. O plugin conta os posts gerados pela automação que ainda estão em `draft`
    ou `pending`. Se a fila atingir o limite máximo, não chama a API.
 5. Para cada post permitido no lote, escolhe um tema da lista (ou deixa a IA
-   propor um dentro do nicho) e envia um prompt à Groq.
+   propor um dentro do nicho) e envia um prompt ao provedor selecionado.
 6. A resposta precisa conter `title`, `excerpt` e `content`. O plugin confere o
    mínimo de palavras do corpo e remove HTML que não seja permitido pelo
    WordPress.
@@ -75,15 +76,17 @@ flowchart TD
    agendar a publicação é uma decisão manual, posterior à revisão.
 
 Se uma etapa falhar, o painel apresenta uma mensagem e o erro é registrado no
-log do PHP/WordPress. Uma chamada à Groq pode consumir créditos mesmo que a
-resposta seja rejeitada pelo mínimo de palavras ou por validação.
+log do PHP/WordPress. Uma chamada ao provedor pode consumir créditos mesmo que
+a resposta seja rejeitada pelo mínimo de palavras ou por validação.
 
 ### Configurações disponíveis no painel
 
 | Configuração | Uso |
 | --- | --- |
-| Chave da API Groq | Credencial usada pelo fluxo do painel. Campo vazio mantém a chave já salva. |
-| Modelo Groq | ID de um modelo ativo e disponível para a conta. O padrão do projeto é `openai/gpt-oss-120b`; disponibilidade pode variar por conta e mudar ao longo do tempo. |
+| Provedor de IA | Groq, OpenAI, Anthropic Claude, Google Gemini, OpenRouter, Ollama local ou outro compatível com OpenAI Responses API. |
+| Chave de API | Credencial do provedor escolhido. As chaves são armazenadas separadamente; o campo vazio mantém a chave já salva para aquele provedor. Ollama local não exige chave. |
+| Modelo | ID de modelo disponível no provedor escolhido. A disponibilidade e o formato do ID variam por serviço. |
+| URL base | Necessária para Ollama (padrão `http://localhost:11434/v1`) e para outro serviço compatível com Responses. HTTP só é permitido para Ollama em localhost. |
 | Nome do site | Identifica o site no contexto editorial enviado à IA. |
 | Tema/nicho | Limita o assunto geral dos artigos. |
 | Público-alvo | Ajusta a explicação ao leitor pretendido. |
@@ -235,9 +238,9 @@ criado.
 Copie `wordpress-plugin/article-automation-bridge/` para
 `wp-content/plugins/article-automation-bridge/` da instalação ativa do
 WordPress, ative o plugin em **Plugins** e abra
-**Configurações > Automação de artigos**. O fluxo do painel chama a Groq
-diretamente e não depende da CLI Node, de `config/sites.json` ou do endpoint
-REST.
+**Configurações > Automação de artigos**. O painel chama diretamente o
+provedor de IA selecionado e não depende da CLI Node, de `config/sites.json`
+ou do endpoint REST.
 
 ## 8. Segurança e privacidade
 
@@ -246,12 +249,13 @@ REST.
 - `.env.example` contém nomes e valores de exemplo, não credenciais reais.
 - O fluxo da CLI envia a chave Groq somente à API Groq e o token WordPress
   somente à instalação WordPress configurada.
-- O painel guarda a chave Groq nas opções do banco WordPress. Ela não é
+- O painel guarda as chaves dos provedores nas opções do banco WordPress. Elas não são
   renderizada de volta no campo da tela, mas não está criptografada pelo plugin;
   proteja o banco, os backups e o acesso de administradores.
 - A integração local pode usar HTTP somente para `localhost`; endpoints
   externos exigem HTTPS na validação do cliente.
-- `store: false` é enviado à Groq no fluxo Node e no painel WordPress.
+- `store: false` é enviado nos pedidos Responses da CLI e do painel; provedores
+  com formatos próprios recebem seus parâmetros correspondentes.
 - O plugin limita operações do painel a administradores (`manage_options`) e
   valida nonces dos formulários.
 - A automação não tem código para mudar um artigo para `publish` ou `future`.
@@ -263,9 +267,9 @@ REST.
 
 | Sintoma | O que verificar |
 | --- | --- |
-| HTTP 401 da Groq | Se a chave configurada é uma API key Groq ativa, sem espaços extras ou revogação. Não é a senha do serviço. |
-| HTTP 404 / `model_not_found` | Se o ID está ativo e disponível para a conta na lista de modelos da Groq. |
-| HTTP 400 da Groq | Leia a mensagem e o request ID apresentados pelo cliente; confirme endpoint, modelo e parâmetros suportados. |
+| HTTP 401 do provedor | Confirme que a chave corresponde ao provedor selecionado, está ativa e não foi revogada. |
+| HTTP 404 / modelo não encontrado | Confirme o ID e a disponibilidade do modelo na conta do provedor escolhido. |
+| HTTP 400 do provedor | Leia a mensagem apresentada; confirme endpoint, modelo e parâmetros suportados pelo serviço. |
 | `AI_API_KEY` não configurada | Confira a variável em `.env.local`, sem publicar o arquivo. |
 | Token WordPress ausente ou 401 | Compare o valor local `WP_LOCAL_TOKEN` com `ARTICLE_AUTOMATION_BRIDGE_TOKEN` no `wp-config.php`, sem colocar nenhum dos dois em logs. |
 | Categoria inválida | Confirme que o ID informado em `wordpress.categoryIds` pertence ao site WordPress correto. |
@@ -285,7 +289,7 @@ npm test
 
 Os testes Node simulam as respostas da IA e do WordPress; eles não validam a
 chave real, não consomem créditos e não criam posts reais. A geração pelo
-painel usa PHP do WordPress e a API Groq; deve ser validada no site local antes
+painel usa PHP do WordPress e o provedor selecionado; deve ser validada no site local antes
 de ativar uma agenda recorrente. O horário depende de computador, XAMPP,
 Agendador do Windows e WP-Cron disponíveis.
 

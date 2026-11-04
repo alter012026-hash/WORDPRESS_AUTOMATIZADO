@@ -12,8 +12,11 @@ define( 'ARTICLE_AUTOMATION_BRIDGE_CRON_HOOK', 'article_automation_bridge_genera
 
 function article_automation_bridge_default_settings() {
 	return array(
+		'provider'      => 'groq',
 		'api_key'       => '',
+		'api_keys'      => array(),
 		'model'         => 'openai/gpt-oss-120b',
+		'base_url'      => '',
 		'site_name'     => get_bloginfo( 'name' ),
 		'theme'         => '',
 		'audience'      => '',
@@ -32,11 +35,31 @@ function article_automation_bridge_default_settings() {
 	);
 }
 
+function article_automation_bridge_provider_options() {
+	return array(
+		'groq'      => 'Groq',
+		'openai'    => 'OpenAI',
+		'anthropic' => 'Anthropic Claude',
+		'google'    => 'Google Gemini',
+		'openrouter' => 'OpenRouter',
+		'ollama'    => 'Ollama local',
+		'custom'    => 'Outro compatível com OpenAI Responses API',
+	);
+}
+
 function article_automation_bridge_get_settings() {
-	return wp_parse_args(
+	$settings = wp_parse_args(
 		get_option( ARTICLE_AUTOMATION_BRIDGE_SETTINGS, array() ),
 		article_automation_bridge_default_settings()
 	);
+	if ( ! is_array( $settings['api_keys'] ) ) {
+		$settings['api_keys'] = array();
+	}
+	if ( ! empty( $settings['api_key'] ) && empty( $settings['api_keys']['groq'] ) ) {
+		$settings['api_keys']['groq'] = $settings['api_key'];
+	}
+	$settings['api_key'] = isset( $settings['api_keys'][ $settings['provider'] ] ) ? $settings['api_keys'][ $settings['provider'] ] : '';
+	return $settings;
 }
 
 function article_automation_bridge_admin_menu() {
@@ -103,15 +126,36 @@ function article_automation_bridge_render_settings_page() {
 			<?php wp_nonce_field( 'article_automation_bridge_save_settings' ); ?>
 			<table class="form-table" role="presentation">
 				<tr>
-					<th scope="row"><label for="api_key"><?php esc_html_e( 'Chave da API Groq', 'article-automation-bridge' ); ?></label></th>
+					<th scope="row"><label for="provider"><?php esc_html_e( 'Provedor de IA', 'article-automation-bridge' ); ?></label></th>
 					<td>
-						<input type="password" class="regular-text" id="api_key" name="settings[api_key]" value="" autocomplete="new-password">
-						<p class="description"><?php echo $settings['api_key'] ? esc_html__( 'Uma chave já está salva. Deixe em branco para mantê-la; informe outra para substituí-la.', 'article-automation-bridge' ) : esc_html__( 'A chave fica salva nas opções deste WordPress. Não a compartilhe.', 'article-automation-bridge' ); ?></p>
+						<select id="provider" name="settings[provider]">
+							<?php foreach ( article_automation_bridge_provider_options() as $provider_id => $provider_label ) : ?>
+								<option value="<?php echo esc_attr( $provider_id ); ?>" <?php selected( $settings['provider'], $provider_id ); ?>><?php echo esc_html( $provider_label ); ?></option>
+							<?php endforeach; ?>
+						</select>
+						<p class="description"><?php esc_html_e( 'Escolha o serviço que será usado nas gerações manuais e agendadas.', 'article-automation-bridge' ); ?></p>
 					</td>
 				</tr>
 				<tr>
-					<th scope="row"><label for="model"><?php esc_html_e( 'Modelo Groq', 'article-automation-bridge' ); ?></label></th>
-					<td><input type="text" class="regular-text" id="model" name="settings[model]" value="<?php echo esc_attr( $settings['model'] ); ?>" required></td>
+					<th scope="row"><label for="api_key"><?php esc_html_e( 'Chave de API', 'article-automation-bridge' ); ?></label></th>
+					<td>
+						<input type="password" class="regular-text" id="api_key" name="settings[api_key]" value="" autocomplete="new-password">
+						<p class="description"><?php echo $settings['api_key'] ? esc_html__( 'Uma chave deste provedor já está salva. Deixe em branco para mantê-la; informe outra para substituí-la. Cada provedor mantém sua própria chave. Ollama local não exige chave.', 'article-automation-bridge' ) : esc_html__( 'Informe a chave do provedor selecionado. Ela fica salva nas opções deste WordPress e não é exibida no painel. Cada provedor mantém sua própria chave. Ollama local não exige chave.', 'article-automation-bridge' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="model"><?php esc_html_e( 'Modelo', 'article-automation-bridge' ); ?></label></th>
+					<td>
+						<input type="text" class="regular-text" id="model" name="settings[model]" value="<?php echo esc_attr( $settings['model'] ); ?>" required>
+						<p class="description"><?php esc_html_e( 'Use o identificador de um modelo disponível na conta do provedor escolhido.', 'article-automation-bridge' ); ?></p>
+					</td>
+				</tr>
+				<tr>
+					<th scope="row"><label for="base_url"><?php esc_html_e( 'URL base da API', 'article-automation-bridge' ); ?></label></th>
+					<td>
+						<input type="url" class="regular-text" id="base_url" name="settings[base_url]" value="<?php echo esc_attr( $settings['base_url'] ); ?>" placeholder="http://localhost:11434/v1">
+						<p class="description"><?php esc_html_e( 'Usada por Ollama local (padrão http://localhost:11434/v1) e pelo provedor compatível com Responses API (informe a URL base, por exemplo https://api.exemplo.com/v1). Ollama só aceita HTTP em localhost.', 'article-automation-bridge' ); ?></p>
+					</td>
 				</tr>
 				<tr>
 					<th scope="row"><label for="site_name"><?php esc_html_e( 'Nome do site', 'article-automation-bridge' ); ?></label></th>
@@ -207,7 +251,7 @@ function article_automation_bridge_render_settings_page() {
 
 		<hr>
 		<h2><?php esc_html_e( 'Gerar agora', 'article-automation-bridge' ); ?></h2>
-		<p><?php esc_html_e( 'Gera a quantidade configurada de artigos e os salva como rascunhos. A chamada à Groq pode consumir créditos.', 'article-automation-bridge' ); ?></p>
+		<p><?php esc_html_e( 'Gera a quantidade configurada de artigos e os salva como rascunhos. O uso da API do provedor selecionado pode consumir créditos.', 'article-automation-bridge' ); ?></p>
 		<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 			<input type="hidden" name="action" value="article_automation_bridge_generate_now">
 			<?php wp_nonce_field( 'article_automation_bridge_generate_now' ); ?>
@@ -244,9 +288,25 @@ function article_automation_bridge_sanitize_settings( $input ) {
 	$previous = article_automation_bridge_get_settings();
 	$settings = $defaults;
 
+	$provider = isset( $input['provider'] ) && is_scalar( $input['provider'] ) ? sanitize_key( $input['provider'] ) : $previous['provider'];
+	if ( ! array_key_exists( $provider, article_automation_bridge_provider_options() ) ) {
+		wp_die( esc_html__( 'O provedor de IA selecionado não é válido.', 'article-automation-bridge' ), '', array( 'response' => 400 ) );
+	}
+	$settings['provider'] = $provider;
 	$api_key = isset( $input['api_key'] ) && is_scalar( $input['api_key'] ) ? trim( (string) $input['api_key'] ) : '';
-	$settings['api_key']     = '' !== $api_key ? sanitize_text_field( $api_key ) : $previous['api_key'];
+	$settings['api_keys'] = $previous['api_keys'];
+	if ( 'ollama' === $provider ) {
+		unset( $settings['api_keys']['ollama'] );
+	} elseif ( '' !== $api_key ) {
+		$settings['api_keys'][ $provider ] = sanitize_text_field( $api_key );
+	}
+	$settings['api_key'] = isset( $settings['api_keys'][ $provider ] ) ? $settings['api_keys'][ $provider ] : '';
 	$settings['model']       = article_automation_bridge_input_text( $input, 'model', $defaults['model'] );
+	$base_url = isset( $input['base_url'] ) && is_scalar( $input['base_url'] ) ? trim( (string) $input['base_url'] ) : '';
+	$settings['base_url'] = '' !== $base_url ? esc_url_raw( $base_url, array( 'http', 'https' ) ) : '';
+	if ( in_array( $provider, array( 'ollama', 'custom' ), true ) ) {
+		$settings['base_url'] = article_automation_bridge_validate_base_url( $settings['base_url'], $provider );
+	}
 	$settings['site_name']   = article_automation_bridge_input_text( $input, 'site_name', $defaults['site_name'] );
 	$settings['theme']       = article_automation_bridge_input_text( $input, 'theme', '' );
 	$settings['audience']    = article_automation_bridge_input_text( $input, 'audience', '' );
@@ -270,6 +330,28 @@ function article_automation_bridge_sanitize_settings( $input ) {
 	}
 
 	return $settings;
+}
+
+function article_automation_bridge_validate_base_url( $base_url, $provider ) {
+	if ( 'ollama' === $provider && '' === $base_url ) {
+		return 'http://localhost:11434/v1';
+	}
+	$parts = wp_parse_url( $base_url );
+	$host  = is_array( $parts ) && isset( $parts['host'] ) ? strtolower( trim( $parts['host'], '[]' ) ) : '';
+	$local = in_array( $host, array( 'localhost', '127.0.0.1', '::1' ), true );
+	if (
+		! is_array( $parts ) ||
+		'' === $host ||
+		! isset( $parts['scheme'] ) ||
+		( 'https' !== strtolower( $parts['scheme'] ) && !( 'ollama' === $provider && 'http' === strtolower( $parts['scheme'] ) && $local ) ) ||
+		isset( $parts['user'] ) ||
+		isset( $parts['pass'] ) ||
+		isset( $parts['query'] ) ||
+		isset( $parts['fragment'] )
+	) {
+		wp_die( esc_html__( 'Informe uma URL base HTTPS válida. Ollama pode usar HTTP somente em localhost.', 'article-automation-bridge' ), '', array( 'response' => 400 ) );
+	}
+	return untrailingslashit( $base_url );
 }
 
 function article_automation_bridge_input_text( $input, $key, $fallback ) {
@@ -367,9 +449,6 @@ function article_automation_bridge_generate_batch() {
 	try {
 		$settings = article_automation_bridge_get_settings();
 		$api_key  = trim( (string) $settings['api_key'] );
-		if ( '' === $api_key ) {
-			throw new RuntimeException( 'Configure uma chave da API Groq no painel.' );
-		}
 		if ( '' === trim( $settings['model'] ) || '' === trim( $settings['site_name'] ) || '' === trim( $settings['theme'] ) || '' === trim( $settings['audience'] ) || '' === trim( $settings['language'] ) || '' === trim( $settings['tone'] ) ) {
 			throw new RuntimeException( 'Configure o modelo, site, tema, público, idioma e tom no painel.' );
 		}
@@ -429,6 +508,20 @@ function article_automation_bridge_generate_batch() {
 }
 
 function article_automation_bridge_request_article( $settings, $topic, $api_key ) {
+	$provider         = isset( $settings['provider'] ) ? $settings['provider'] : 'groq';
+	$provider_options = article_automation_bridge_provider_options();
+	if ( ! isset( $provider_options[ $provider ] ) ) {
+		throw new RuntimeException( 'O provedor de IA configurado não é válido.' );
+	}
+	$provider_label = $provider_options[ $provider ];
+	$model          = trim( (string) $settings['model'] );
+	if ( '' === $model ) {
+		throw new RuntimeException( 'Configure o modelo do provedor ' . $provider_label . ' no painel.' );
+	}
+	if ( '' === trim( $api_key ) && 'ollama' !== $provider ) {
+		throw new RuntimeException( 'Configure uma chave de API para o provedor ' . $provider_label . ' no painel.' );
+	}
+
 	$rules = array_filter( array_map( 'trim', preg_split( '/\r\n|\r|\n/', $settings['rules'] ) ) );
 	$topic_instruction = $topic
 		? 'Escreva um artigo sobre: "' . $topic . '".'
@@ -445,58 +538,131 @@ function article_automation_bridge_request_article( $settings, $topic, $api_key 
 		implode( "\n", $rules )
 	);
 
+	$instructions = 'Você é um redator editorial. Siga a configuração do site e retorne apenas o JSON solicitado.';
+	$headers      = array( 'Content-Type' => 'application/json' );
+	$request_body = array();
+
+	switch ( $provider ) {
+		case 'groq':
+			$url = 'https://api.groq.com/openai/v1/responses';
+			$headers['Authorization'] = 'Bearer ' . $api_key;
+			$request_body = array(
+				'model'             => $model,
+				'instructions'      => $instructions,
+				'input'             => array( array( 'role' => 'user', 'content' => $prompt ) ),
+				'max_output_tokens' => 4000,
+				'store'             => false,
+			);
+			break;
+		case 'openai':
+			$url = 'https://api.openai.com/v1/responses';
+			$headers['Authorization'] = 'Bearer ' . $api_key;
+			$request_body = array(
+				'model'             => $model,
+				'instructions'      => $instructions,
+				'input'             => array( array( 'role' => 'user', 'content' => $prompt ) ),
+				'max_output_tokens' => 4000,
+				'store'             => false,
+			);
+			break;
+		case 'anthropic':
+			$url = 'https://api.anthropic.com/v1/messages';
+			$headers['x-api-key']         = $api_key;
+			$headers['anthropic-version'] = '2023-06-01';
+			$request_body = array(
+				'model'      => $model,
+				'max_tokens' => 4000,
+				'system'     => $instructions,
+				'messages'   => array( array( 'role' => 'user', 'content' => $prompt ) ),
+			);
+			break;
+		case 'google':
+			$url = add_query_arg(
+				'key',
+				$api_key,
+				'https://generativelanguage.googleapis.com/v1beta/models/' . rawurlencode( $model ) . ':generateContent'
+			);
+			$request_body = array(
+				'systemInstruction' => array( 'parts' => array( array( 'text' => $instructions ) ) ),
+				'contents'          => array( array( 'role' => 'user', 'parts' => array( array( 'text' => $prompt ) ) ) ),
+				'generationConfig'  => array( 'maxOutputTokens' => 4000 ),
+			);
+			break;
+		case 'openrouter':
+			$url = 'https://openrouter.ai/api/v1/chat/completions';
+			$headers['Authorization'] = 'Bearer ' . $api_key;
+			$request_body = array(
+				'model'      => $model,
+				'max_tokens' => 4000,
+				'messages'   => array(
+					array( 'role' => 'system', 'content' => $instructions ),
+					array( 'role' => 'user', 'content' => $prompt ),
+				),
+			);
+			break;
+		case 'ollama':
+			$base_url = ! empty( $settings['base_url'] ) ? untrailingslashit( $settings['base_url'] ) : 'http://localhost:11434/v1';
+			$url      = $base_url . '/chat/completions';
+			$request_body = array(
+				'model'      => $model,
+				'max_tokens' => 4000,
+				'messages'   => array(
+					array( 'role' => 'system', 'content' => $instructions ),
+					array( 'role' => 'user', 'content' => $prompt ),
+				),
+			);
+			break;
+		case 'custom':
+			if ( empty( $settings['base_url'] ) ) {
+				throw new RuntimeException( 'Configure a URL base para o provedor compatível com Responses API.' );
+			}
+			$url = untrailingslashit( $settings['base_url'] ) . '/responses';
+			$headers['Authorization'] = 'Bearer ' . $api_key;
+			$request_body = array(
+				'model'             => $model,
+				'instructions'      => $instructions,
+				'input'             => array( array( 'role' => 'user', 'content' => $prompt ) ),
+				'max_output_tokens' => 4000,
+				'store'             => false,
+			);
+			break;
+	}
+
 	$response = wp_remote_post(
-		'https://api.groq.com/openai/v1/responses',
+		$url,
 		array(
 			'timeout' => 180,
-			'headers' => array(
-				'Authorization' => 'Bearer ' . $api_key,
-				'Content-Type'  => 'application/json',
-			),
-			'body'    => wp_json_encode(
-				array(
-					'model'             => $settings['model'],
-					'instructions'      => 'Você é um redator editorial. Siga a configuração do site e retorne apenas o JSON solicitado.',
-					'input'             => array( array( 'role' => 'user', 'content' => $prompt ) ),
-					'max_output_tokens' => 4000,
-					'store'             => false,
-				)
-			),
+			'headers' => $headers,
+			'body'    => wp_json_encode( $request_body ),
 		)
 	);
 
 	if ( is_wp_error( $response ) ) {
-		throw new RuntimeException( 'Falha ao conectar à API Groq: ' . $response->get_error_message() );
+		$error = $response->get_error_message();
+		if ( '' !== $api_key ) {
+			$error = str_replace( $api_key, '[redacted]', $error );
+		}
+		throw new RuntimeException( 'Falha ao conectar ao provedor ' . $provider_label . ': ' . $error );
 	}
 
 	$status = (int) wp_remote_retrieve_response_code( $response );
 	$body   = wp_remote_retrieve_body( $response );
 	$data   = json_decode( $body, true );
 	if ( $status < 200 || $status >= 300 ) {
-		$error  = isset( $data['error']['message'] ) ? $data['error']['message'] : ( isset( $data['error'] ) ? wp_json_encode( $data['error'] ) : substr( $body, 0, 500 ) );
-		$error  = str_replace( $api_key, '[redacted]', (string) $error );
-		$code   = isset( $data['error']['code'] ) ? ' (' . sanitize_text_field( $data['error']['code'] ) . ')' : '';
-		throw new RuntimeException( sprintf( 'A API Groq respondeu HTTP %1$d: %2$s%3$s', $status, sanitize_text_field( $error ), $code ) );
+		$error = isset( $data['error']['message'] ) ? $data['error']['message'] : ( isset( $data['error'] ) ? wp_json_encode( $data['error'] ) : ( isset( $data['message'] ) ? $data['message'] : substr( $body, 0, 500 ) ) );
+		if ( '' !== $api_key ) {
+			$error = str_replace( $api_key, '[redacted]', (string) $error );
+		}
+		$code = isset( $data['error']['code'] ) ? ' (' . sanitize_text_field( $data['error']['code'] ) . ')' : '';
+		throw new RuntimeException( sprintf( 'O provedor %1$s respondeu HTTP %2$d: %3$s%4$s', $provider_label, $status, sanitize_text_field( (string) $error ), $code ) );
 	}
 
-	$text = '';
-	if ( isset( $data['output'] ) && is_array( $data['output'] ) ) {
-		foreach ( $data['output'] as $item ) {
-			if ( empty( $item['content'] ) || ! is_array( $item['content'] ) ) {
-				continue;
-			}
-			foreach ( $item['content'] as $content ) {
-				if ( isset( $content['type'], $content['text'] ) && 'output_text' === $content['type'] ) {
-					$text .= $content['text'];
-				}
-			}
-		}
-	}
+	$text = article_automation_bridge_extract_response_text( $provider, $data );
 
 	$start = strpos( $text, '{' );
 	$end   = strrpos( $text, '}' );
 	if ( false === $start || false === $end || $end <= $start ) {
-		throw new RuntimeException( 'A Groq não retornou o JSON esperado para o artigo.' );
+		throw new RuntimeException( 'O provedor ' . $provider_label . ' não retornou o JSON esperado para o artigo.' );
 	}
 	$article = json_decode( substr( $text, $start, $end - $start + 1 ), true );
 	if (
@@ -508,7 +674,7 @@ function article_automation_bridge_request_article( $settings, $topic, $api_key 
 		'' === trim( $article['title'] ) ||
 		'' === trim( $article['content'] )
 	) {
-		throw new RuntimeException( 'A resposta da Groq precisa conter título, resumo e conteúdo.' );
+		throw new RuntimeException( 'A resposta de ' . $provider_label . ' precisa conter título, resumo e conteúdo.' );
 	}
 
 	return array(
@@ -516,4 +682,52 @@ function article_automation_bridge_request_article( $settings, $topic, $api_key 
 		'excerpt' => sanitize_textarea_field( $article['excerpt'] ),
 		'content' => wp_kses_post( $article['content'] ),
 	);
+}
+
+function article_automation_bridge_extract_response_text( $provider, $data ) {
+	$text = '';
+	if ( ! is_array( $data ) ) {
+		throw new RuntimeException( 'O provedor retornou uma resposta vazia ou inválida.' );
+	}
+
+	if ( in_array( $provider, array( 'groq', 'openai', 'custom' ), true ) && isset( $data['output'] ) && is_array( $data['output'] ) ) {
+		foreach ( $data['output'] as $item ) {
+			if ( empty( $item['content'] ) || ! is_array( $item['content'] ) ) {
+				continue;
+			}
+			foreach ( $item['content'] as $content ) {
+				if ( isset( $content['text'] ) && ( ! isset( $content['type'] ) || in_array( $content['type'], array( 'output_text', 'text' ), true ) ) ) {
+					$text .= $content['text'];
+				}
+			}
+		}
+	} elseif ( 'anthropic' === $provider && isset( $data['content'] ) && is_array( $data['content'] ) ) {
+		foreach ( $data['content'] as $content ) {
+			if ( isset( $content['type'], $content['text'] ) && 'text' === $content['type'] ) {
+				$text .= $content['text'];
+			}
+		}
+	} elseif ( 'google' === $provider && isset( $data['candidates'][0]['content']['parts'] ) && is_array( $data['candidates'][0]['content']['parts'] ) ) {
+		foreach ( $data['candidates'][0]['content']['parts'] as $part ) {
+			if ( isset( $part['text'] ) ) {
+				$text .= $part['text'];
+			}
+		}
+	} elseif ( isset( $data['choices'][0]['message']['content'] ) ) {
+		$content = $data['choices'][0]['message']['content'];
+		if ( is_string( $content ) ) {
+			$text = $content;
+		} elseif ( is_array( $content ) ) {
+			foreach ( $content as $part ) {
+				if ( isset( $part['text'] ) ) {
+					$text .= $part['text'];
+				}
+			}
+		}
+	}
+
+	if ( '' === trim( $text ) ) {
+		throw new RuntimeException( 'O provedor de IA retornou uma resposta vazia ou em formato não reconhecido.' );
+	}
+	return $text;
 }
